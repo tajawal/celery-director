@@ -30,7 +30,9 @@ class WorkflowBuilder(object):
             self._workflow = Workflow.query.filter_by(id=self.workflow_id).first()
         return self._workflow
 
-    def new_task(self, task_name, single=True, payload=None):
+    def new_task(self, task_name, queue=None,single=True, payload=None):
+        if not queue:
+            queue = self.queue
         task_id = uuid()
 
         if not payload:
@@ -39,7 +41,7 @@ class WorkflowBuilder(object):
         # We create the Celery task specifying its UID
         signature = cel.tasks.get(task_name).subtask(
             kwargs={"workflow_id": self.workflow_id, "payload": payload},
-            queue=self.queue,
+            queue=queue,
             task_id=task_id,
         )
 
@@ -60,36 +62,41 @@ class WorkflowBuilder(object):
 
     def parse(self, tasks):
         canvas = []
-
+        # import pdb; pdb.set_trace()
         for task in tasks:
-            if type(task) is str:
-                signature = self.new_task(task)
-                canvas.append(signature)
-    
-            elif type(task) is dict:
-                name = list(task)[0]
-                if "type" not in task[name]:
-                    raise WorkflowSyntaxError()
+            if type(task) is not dict:
+                raise WorkflowSyntaxError()
 
-                if task[name]["type"] not in ["group", "dynamic_map", "workflow"]:
-                    raise WorkflowSyntaxError
+            name = list(task)[0]
+            if not task[name].get("type"):
+                raise WorkflowSyntaxError()
 
-                if task[name]["type"] in ["group", "dynamic_map"]:
-                    canvas.append(getattr(
-                        self, f"parse_{task[name]['type']}")
-                        (task[name]["tasks"]))
+            task_type = task[name].get("type")
+            try:
+                parse = getattr(self, f"parse_{task[name]['type']}")
+                print(parse)
+                if task_type == 'task':
+                    canvas.append(parse(task))
+                else:
+                    canvas.append(parse(task[name]["tasks"]))
 
-                elif task[name]["type"] == "workflow":
-                    self.sub_flows.append(task[name]["name"])
-
-            else:
+            except AttributeError:
                 raise WorkflowSyntaxError()
 
         return canvas
 
+    def parse_task(self, task, payload=None, single=True):
+        name = list(task)[0]
+        return self.new_task(
+            task_name=name,
+            queue=task[name].get("queue", ""),
+            single=single,
+            payload=payload
+        )
+
     def parse_group(self, tasks):
         sub_canvas_tasks = [
-            self.new_task(t, single=False) for t in tasks]
+            self.parse_task(t, single=False) for t in tasks]
 
         sub_canvas = group(*sub_canvas_tasks, task_id=uuid())
         self.previous = [s.id for s in sub_canvas_tasks]
@@ -99,7 +106,7 @@ class WorkflowBuilder(object):
         sub_canvas_tasks = []
         for var in self.workflow.payload:
             sub_canvas_tasks.append(chain(
-                [self.new_task(task_name=t, payload=[var]) for t in tasks],
+                [self.parse_task(task=t, payload=[var]) for t in tasks],
                 task_uid=uuid()))
         sub_canvas = group(*sub_canvas_tasks, task_id=uuid())
         self.previous = [s.id for s in sub_canvas_tasks]
