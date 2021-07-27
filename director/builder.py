@@ -30,7 +30,7 @@ class WorkflowBuilder(object):
             self._workflow = Workflow.query.filter_by(id=self.workflow_id).first()
         return self._workflow
 
-    def new_task(self, task_name, queue=None,single=True, payload=None):
+    def new_task(self, task_name, queue=None, single=True, payload=None):
         if not queue:
             queue = self.queue
         task_id = uuid()
@@ -73,6 +73,10 @@ class WorkflowBuilder(object):
 
             task_type = task[name].get("type")
             try:
+                if task_type == "workflow":
+                    self.sub_flows.append(task[name]["name"])
+                    continue
+
                 parse = getattr(self, f"parse_{task[name]['type']}")
                 print(parse)
                 if task_type == 'task':
@@ -116,7 +120,7 @@ class WorkflowBuilder(object):
         self.canvas = self.parse(self.tasks)
         self.canvas.insert(0, start.si(self.workflow.id).set(queue=self.queue))
         if self.sub_flows:
-            self.canvas.append(sub_flows.s(self.sub_flows).set(queue=self.queue))
+            self.canvas.append(sub_flows.s(self.sub_flows, self.workflow.id).set(queue=self.queue))
         self.canvas.append(end.si(self.workflow.id).set(queue=self.queue))
 
     def run(self):

@@ -35,8 +35,7 @@ def end(workflow_id):
 
 
 @cel.task()
-def sub_flows(result, subflows, **kwargs):
-
+def sub_flows(result, subflows, pid, **kwargs):
     if not subflows:
         return result
 
@@ -44,8 +43,10 @@ def sub_flows(result, subflows, **kwargs):
 
     for sub in subflows:
         project, name = sub.split(".")
+        pwf = Workflow.query.filter_by(id=pid).first()
         obj = Workflow(project=project, name=name, payload=result)
+        obj.parent = pwf
         obj.save()
+
         builder = WorkflowBuilder(obj.id)
-        builder.build()
         builder.run()

@@ -91,6 +91,7 @@ def list_workflows():
 def get_workflow(workflow_id):
     workflow = _get_workflow(workflow_id)
     tasks = [t.to_dict() for t in workflow.tasks]
+    tasks.extend([t.to_dict() for t in workflow.sub_workflows])
 
     resp = workflow.to_dict()
     resp.update({"tasks": tasks})

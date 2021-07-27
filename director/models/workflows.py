@@ -12,15 +12,10 @@ class Workflow(BaseModel):
     status = db.Column(db.Enum(StatusType), default=StatusType.pending, nullable=False)
     payload = db.Column(JSONBType, default={})
     periodic = db.Column(db.Boolean, default=False)
-
-    # Relationship
-    # parent_id = db.Column(
-    #     UUIDType(binary=False),
-    #     db.ForeignKey("workflows.id"),
-    #     nullable=True,
-    #     index=True,
-    # )
-    # workflow = db.relationship("Workflow", remote_side=[parent_id])
+    parent_id = db.Column(UUIDType(binary=False), db.ForeignKey('workflows.id'), index=True)
+    parent = db.relationship(lambda: Workflow,
+                             remote_side='Workflow.id',
+                             backref='sub_workflows')
 
     def __str__(self):
         return f"{self.project}.{self.name}"
