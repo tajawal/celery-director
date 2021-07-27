@@ -1,10 +1,10 @@
+from celery import chain, group
+from celery.utils import uuid
 from celery.utils.log import get_task_logger
-
 from director.extensions import cel
-from director.tasks.base import BaseTask
 from director.models import StatusType
 from director.models.workflows import Workflow
-
+from director.tasks.base import BaseTask
 
 logger = get_task_logger(__name__)
 
@@ -32,3 +32,21 @@ def end(workflow_id):
     if workflow.status != StatusType.error:
         workflow.status = StatusType.success
         workflow.save()
+
+
+@cel.task()
+def sub_flows(result, subflows, pid, **kwargs):
+    if not subflows:
+        return result
+
+    from director.builder import WorkflowBuilder
+
+    for sub in subflows:
+        project, name = sub.split(".")
+        pwf = Workflow.query.filter_by(id=pid).first()
+        obj = Workflow(project=project, name=name, payload=result)
+        obj.parent = pwf
+        obj.save()
+
+        builder = WorkflowBuilder(obj.id)
+        builder.run()
